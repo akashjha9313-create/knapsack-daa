@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Intelligent Inventory Management — Knapsack DAA</title>
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
+    .container { max-width: 960px; margin: auto; }
+    h1 { color: #38bdf8; margin-bottom: 4px; }
+    p.sub { color: #94a3b8; margin-top: 0; margin-bottom: 24px; }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #334155; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    input { background: #0f172a; border: 1px solid #475569; color: #fff; padding: 10px 12px; border-radius: 8px; }
+    button { background: #0284c7; color: #fff; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer; font-weight: 600; }
+    button:hover { background: #0369a1; }
+    button.run { background: #16a34a; width: 100%; font-size: 16px; padding: 12px; margin-top: 12px; }
+    button.run:hover { background: #15803d; }
+    button.del { background: #dc2626; padding: 6px 10px; font-size: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #334155; }
+    th { color: #38bdf8; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+    .greedy { background: #0369a1; color: #e0f2fe; }
+    .dp { background: #7e22ce; color: #f3e8ff; }
+    .metric { font-size: 24px; font-weight: 700; margin: 10px 0; color: #4ade80; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Intelligent Inventory Management (Knapsack DAA)</h1>
+    <p class="sub">Comparison of Fractional Knapsack (Greedy — O(N log N)) vs. 0/1 Knapsack (Dynamic Programming — O(N × W))</p>
+
+    <div class="card">
+      <div class="row">
+        <label><strong>Warehouse Capacity (kg):</strong></label>
+        <input type="number" id="capacity" value="50" min="1" style="width: 110px;" />
+      </div>
+
+      <hr style="border-color: #334155; margin: 16px 0;" />
+
+      <div class="row">
+        <input type="text" id="itemName" placeholder="Item Name (e.g. SSD Box)" />
+        <input type="number" id="itemWeight" placeholder="Weight (kg)" min="1" style="width: 130px;" />
+        <input type="number" id="itemProfit" placeholder="Profit (₹)" min="1" style="width: 130px;" />
+        <button onclick="addItem()">+ Add Item</button>
+      </div>
+
+      <table>
+        <thead>
+          <tr><th>Product</th><th>Weight (kg)</th><th>Profit (₹)</th><th>Profit/Weight Ratio</th><th>Action</th></tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+
+      <button class="run" onclick="optimize()">Run Knapsack Optimization & Compare</button>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <span class="badge greedy">Fractional Knapsack (Greedy)</span>
+        <div class="metric" id="gProfit">Max Profit: ₹0</div>
+        <p id="gTime" style="color:#94a3b8; font-size:14px;">Execution Time: 0 ms | Complexity: O(N log N)</p>
+        <ul id="gList"></ul>
+      </div>
+
+      <div class="card">
+        <span class="badge dp">0/1 Knapsack (Dynamic Programming)</span>
+        <div class="metric" id="dpProfit">Max Profit: ₹0</div>
+        <p id="dpTime" style="color:#94a3b8; font-size:14px;">Execution Time: 0 ms | Complexity: O(N × W)</p>
+        <ul id="dpList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let items = [
+      { name: "Laptop Box", weight: 10, profit: 60 },
+      { name: "Gaming Monitor", weight: 20, profit: 100 },
+      { name: "Mechanical Keyboard", weight: 30, profit: 120 },
+      { name: "Smartphone Crate", weight: 15, profit: 90 },
+      { name: "Router Bundle", weight: 25, profit: 110 }
+    ];
+
+    function renderItems() {
+      const tbody = document.getElementById("itemsBody");
+      tbody.innerHTML = items.map((it, idx) => `
+        <tr>
+          <td>${it.name}</td>
+          <td>${it.weight} kg</td>
+          <td>₹${it.profit}</td>
+          <td>${(it.profit / it.weight).toFixed(2)}</td>
+          <td><button class="del" onclick="removeItem(${idx})">Remove</button></td>
+        </tr>
+      `).join("");
+    }
+
+    function addItem() {
+      const name = document.getElementById("itemName").value.trim();
+      const weight = parseInt(document.getElementById("itemWeight").value);
+      const profit = parseInt(document.getElementById("itemProfit").value);
+      if (!name || isNaN(weight) || isNaN(profit) || weight <= 0 || profit <= 0) return;
+      items.push({ name, weight, profit });
+      document.getElementById("itemName").value = "";
+      document.getElementById("itemWeight").value = "";
+      document.getElementById("itemProfit").value = "";
+      renderItems();
+    }
+
+    function removeItem(idx) {
+      items.splice(idx, 1);
+      renderItems();
+    }
+
+    function optimize() {
+      const W = parseInt(document.getElementById("capacity").value);
+      if (isNaN(W) || W <= 0) return;
+
+      // 1. Fractional Knapsack (Greedy)
+      const t0 = performance.now();
+      const sorted = [...items].sort((a, b) => (b.profit / b.weight) - (a.profit / a.weight));
+      let rem = W, gTotal = 0, gSelected = [];
+      for (const it of sorted) {
+        if (rem === 0) break;
+        if (it.weight <= rem) {
+          rem -= it.weight;
+          gTotal += it.profit;
+          gSelected.push(`${it.name} (100%) → ₹${it.profit}`);
+        } else {
+          const frac = rem / it.weight;
+          const earned = it.profit * frac;
+          gTotal += earned;
+          gSelected.push(`${it.name} (${(frac * 100).toFixed(1)}%) → ₹${earned.toFixed(2)}`);
+          rem = 0;
+        }
+      }
+      const t1 = performance.now();
+
+      // 2. 0/1 Knapsack (Dynamic Programming)
+      const t2 = performance.now();
+      const n = items.length;
+      const dp = Array.from({ length: n + 1 }, () => Array(W + 1).fill(0));
+      for (let i = 1; i <= n; i++) {
+        const { weight: wt, profit: val } = items[i - 1];
+        for (let w = 1; w <= W; w++) {
+          dp[i][w] = wt <= w ? Math.max(val + dp[i - 1][w - wt], dp[i - 1][w]) : dp[i - 1][w];
+        }
+      }
+      let w = W, dpSelected = [];
+      for (let i = n; i > 0; i--) {
+        if (dp[i][w] !== dp[i - 1][w]) {
+          dpSelected.push(`${items[i - 1].name} (100%) → ₹${items[i - 1].profit}`);
+          w -= items[i - 1].weight;
+        }
+      }
+      dpSelected.reverse();
+      const t3 = performance.now();
+
+      document.getElementById("gProfit").innerText = `Max Profit: ₹${gTotal.toFixed(2)}`;
+      document.getElementById("gTime").innerText = `Execution Time: ${(t1 - t0).toFixed(4)} ms | Complexity: O(N log N)`;
+      document.getElementById("gList").innerHTML = gSelected.map(s => `<li>${s}</li>`).join("");
+
+      document.getElementById("dpProfit").innerText = `Max Profit: ₹${dp[n][W]}`;
+      document.getElementById("dpTime").innerText = `Execution Time: ${(t3 - t2).toFixed(4)} ms | Complexity: O(N × W)`;
+      document.getElementById("dpList").innerHTML = dpSelected.map(s => `<li>${s}</li>`).join("");
+    }
+
+    renderItems();
+    optimize();
+  </script>
+</body>
+</html>
